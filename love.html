@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sevgiyle ❤️ Yul</title>
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background-color: rgba(40, 40, 40, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        #controls label { font-size: 14px; }
+        #controls input[type="range"],
+        #controls input[type="color"],
+        #controls input[type="text"] {
+            margin-top: 5px;
+            width: 150px;
+        }
+        #controls input[type="color"] { padding: 0; border: none; height: 25px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <canvas id="loveCanvas"></canvas>
+
+    <div id="controls">
+        <div>
+            <label for="rainSpeedSlider">Velocidad:</label>
+            <input type="range" id="rainSpeedSlider" min="0.5" max="10" value="5" step="0.1">
+        </div>
+        <div>
+            <label for="colorPicker">Color:</label>
+            <input type="color" id="colorPicker" value="#F80053">
+        </div>
+        <div>
+            <label for="textInput">Texto:</label>
+            <input type="text" id="textInput" value="Aşkım">
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('loveCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // --- FUNCIONES DE CONVERSIÓN DE COLOR ---
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : null;
+        }
+        function rgbToHsl(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+            if (max === min) {
+                h = s = 0;
+            } else {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return [h * 360, s * 100, l * 100];
+        }
+
+        // --- Controles y variables globales de color ---
+        const colorPicker = document.getElementById('colorPicker');
+        const textInput = document.getElementById('textInput');
+        const rainSpeedSlider = document.getElementById('rainSpeedSlider');
+        
+        let hexColor = colorPicker.value;
+        let textToDisplay = textInput.value;
+        let baseRainSpeed = parseFloat(rainSpeedSlider.value);
+        let baseHsl = rgbToHsl(hexToRgb(hexColor).r, hexToRgb(hexColor).g, hexToRgb(hexColor).b);
+
+        colorPicker.addEventListener('input', (e) => {
+            hexColor = e.target.value;
+            const rgb = hexToRgb(hexColor);
+            if (rgb) baseHsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+        });
+        textInput.addEventListener('input', (e) => textToDisplay = e.target.value || "My Love");
+        rainSpeedSlider.addEventListener('input', (e) => baseRainSpeed = parseFloat(e.target.value));
+
+        // --- LÓGICA DE COLUMNAS CON PROFUNDIDAD ---
+        class Column {
+            constructor() { this.reset(); }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * -canvas.height;
+                
+                // Un único factor de profundidad controla todo
+                const depthFactor = Math.random() * 0.7 + 0.3; // 0.3 (lejos) a 1.0 (cerca)
+                
+                this.speed = depthFactor * baseRainSpeed;
+                this.opacity = depthFactor;
+                this.fontSize = Math.floor(15 + (10 * depthFactor));
+
+                // ¡AQUÍ ESTÁ LA MAGIA! Calculamos el color basado en la profundidad.
+                const newLightness = baseHsl[2] * depthFactor;
+                this.color = `hsl(${baseHsl[0]}, ${baseHsl[1]}%, ${newLightness}%)`;
+            }
+            update() {
+                this.speed = (this.opacity * baseRainSpeed); // La velocidad depende de su profundidad
+                this.y += this.speed;
+                if (this.y - this.fontSize > canvas.height) this.reset();
+            }
+            draw(context) {
+                context.globalAlpha = this.opacity;
+                context.font = `${this.fontSize}px monospace`;
+                context.fillStyle = this.color; // Usa su color individual
+                
+                let currentY = this.y;
+                while (currentY < canvas.height) {
+                    context.fillText(textToDisplay, this.x, currentY);
+                    currentY += this.fontSize * 1.2;
+                }
+            }
+        }
+
+        let columns = [];
+        const numberOfColumns = Math.floor(canvas.width / 20);
+        for (let i = 0; i < numberOfColumns; i++) columns.push(new Column());
+
+        // --- Partículas de explosión (Primer plano) ---
+        let particles = [];
+        class Particle {
+            constructor(x, y, color, text) {
+                this.x = x; this.y = y; this.color = color; this.text = text;
+                this.size = Math.random() * 15 + 10;
+                this.speedX = Math.random() * 6 - 3; 
+                this.speedY = Math.random() * 6 - 3;
+                this.opacity = 1; this.fade = 0.02;
+            }
+            update() {
+                this.x += this.speedX; this.y += this.speedY;
+                if (this.opacity > this.fade) { this.opacity -= this.fade; } else { this.opacity = 0; }
+            }
+            draw(context) {
+                context.globalAlpha = this.opacity;
+                context.font = `${this.size}px monospace`;
+                context.fillStyle = this.color; // Usa el color brillante principal
+                context.fillText(this.text, this.x, this.y);
+            }
+        }
+        
+        window.addEventListener('mousemove', (e) => {
+            for (let i = 0; i < 5; i++) {
+                // Las partículas del ratón siempre usan el color principal y brillante (hexColor)
+                particles.push(new Particle(e.x, e.y, hexColor, textToDisplay));
+            }
+        });
+
+        // --- Bucle principal de animación ---
+        function animate() {
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            columns.forEach(column => {
+                column.update();
+                column.draw(ctx);
+            });
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw(ctx);
+                if (particles[i].opacity === 0) particles.splice(i, 1);
+            }
+            
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            columns = [];
+            const newNumberOfColumns = Math.floor(canvas.width / 20);
+            for (let i = 0; i < newNumberOfColumns; i++) columns.push(new Column());
+        });
+    </script>
+</body>
+</html>
